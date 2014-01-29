@@ -2,7 +2,7 @@
 *.slo
 *.lo
 *.o
-
+*.out
 # Compiled Dynamic libraries
 *.so
 *.dylib
@@ -11,3 +11,5 @@
 *.lai
 *.la
 *.a
+# Log files
+*.log

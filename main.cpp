@@ -10,6 +10,7 @@
 #include <chrono>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 using namespace rapidxml;
 static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp)
 {
@@ -42,14 +43,17 @@ void run_manifest_check(int channel)
     char url[100];
     sprintf(url,"http://hout.livec3.c9.id.cam7.eng.velocix.com/smj%d/smooth/Manifest",
             channel);
+
     std::string buffer;
+    // Set up the curl stuff as a one off per thread
     CURL *curl;
-    int count = 0;
     CURLcode res;
     curl = curl_easy_init();
-    curl_easy_setopt( curl, CURLOPT_URL, url );
+    curl_easy_setopt( curl, CURLOPT_URL, url);
     curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, WriteCallback );
     curl_easy_setopt( curl, CURLOPT_WRITEDATA, &buffer );
+
+    int count = 0;
     std::stringstream localBuffer;
     int max_time_difference = 20020000;
     long long current_segment_time = 0;
@@ -57,24 +61,26 @@ void run_manifest_check(int channel)
     int max_time = 0;
     bool clear_counter = false;
     int update_counter = 0;
+    time_t newtime = time(0);
     for(size_t i = 0; i < 500; ++i)
     {
         res = curl_easy_perform(curl);
         if(current_segment_time != previous_segment_time){
             clear_counter = true;
             previous_segment_time = current_segment_time;
+            newtime = time(0);
         }
         else
         {
             update_counter += 1;
         }
         current_segment_time = get_time_stamp(buffer);
-        if(current_segment_time - previous_segment_time > max_time_difference)
+        if(current_segment_time - previous_segment_time > max_time_difference || current_segment_time < previous_segment_time)
         {
             count++;
             if(count > 1){
-                localBuffer << "time difference is larger than expected at: " << current_segment_time - previous_segment_time 
-                    << " count is "<< count << "\n URL: " << url << "\n took " << update_counter << " manifest refreshes to update." << std::endl;
+                localBuffer << "time difference is larger than expected at: " << current_segment_time - previous_segment_time << " with current segment " << current_segment_time << " previous segment " << previous_segment_time
+                    << " count is "<< count << "\n URL: " << url << "\n took " << update_counter << " manifest refreshes to update. Corrosponding to " << time(0) - newtime<<"s" << std::endl;
                 max_time += current_segment_time - previous_segment_time;
             }
         }
@@ -84,13 +90,16 @@ void run_manifest_check(int channel)
             clear_counter = false;
 
         }
-        std::chrono::milliseconds dura( 500 );
+        std::chrono::milliseconds dura( 250 );
         std::this_thread::sleep_for( dura );
         buffer.clear();
     }
 
     char fname[50];
-    localBuffer << "!!!!!!!!!\n average time over 2 seconds is " << (max_time)/(count-1) << " for n = " << count << std::endl;
+    if(count >1 )
+        localBuffer << "!!!!!!!!!\n average time over 2 seconds is " << (max_time)/(count-1) << " for n = " << count << std::endl;
+    else
+        localBuffer << "!!!!!!!!! no out of time segments"  << std::endl;
     sprintf(fname,"./stream_%d.log", channel);
     std::ofstream file;
     file.open(fname, std::ios::out);
